@@ -3,6 +3,16 @@ import fs from 'fs/promises';
 import crypto from 'crypto';
 import { futimes } from 'fs';
 import { timeStamp } from 'console';
+import { diffLines } from 'diff';
+import chalk from 'chalk';
+import { Command } from 'commander';
+
+
+
+
+const program = new Command();
+
+
 
 class nogit 
 {
@@ -127,9 +137,59 @@ class nogit
 
         for(const file of commitData.files)
         {
-            console.log(`File`)
+            console.log(`File is ${file.path}`);
+            const fileContent = await this.getFileContent(file.hash);
+            console.log(fileContent);
+
+            if(commitData.parent)
+            {
+                //get parent commit data
+                const parentCommitData = JSON.parse(await this.getCommitData(commitData.parent));
+                const getParentFileContent = await this.getParentFileContent(parentCommitData, file.path);
+                if(this.getParentFileContent !== undefined)
+                {
+                    console.log("Diff\n");
+                    const diff = diffLines(getParentFileContent, fileContent);
+                    diff.forEach(part =>  {
+                        if(part.added)
+                        {
+                            process.stdout.write(chalk.green( "++" + part.value));
+                        }
+                        else if(part.removed)
+                        {
+                            process.stdout.write(chalk.red("--" + part.value));
+                        }
+                        else
+                        {
+                            process.stdout.write(chalk.gray(part.value));
+
+                        }
+
+                    });
+                    console.log();
+                } else 
+                {
+                    console.log("New file commited\n");
+                }
+
+            }
+            else
+            {
+                console.log("No parent\n");
+            }
+
+
         }
 
+    }
+
+    async getParentFileContent(parentCommitData, filePath)
+    {
+        const parentFile = parentCommitData.files.find(file => file.path === filePath );
+        if (parentFile)
+        {
+            return await this.getFileContent(parentFile.hash);      
+        }
     }
 
     async getCommitData(commitHash)
@@ -147,19 +207,58 @@ class nogit
             return null;
         }
     }
+    async getFileContent(fileHash)
+    {
+        const objectsPath = path.join(this.objectsPath, fileHash);
+        return fs.readFile(objectsPath, {encoding : 'utf-8'});
+
+    }
 }
 
 
-(async () => {
-    const NOGIT = new nogit();
-    await new Promise(resolve => setTimeout(resolve, 100)); // Small delay to ensure init completes
+// (async () => {
+//     const NOGIT = new nogit();
+//     await new Promise(resolve => setTimeout(resolve, 100)); // Small delay to ensure init completes
 
-    await NOGIT.add("sample.txt");
-    await NOGIT.commit('Initial commit');
-    await NOGIT.commit('second commit');
-    await NOGIT.commit('second commit');
+// //    await NOGIT.add("sample.txt");
+// //    await NOGIT.commit('Initial commit');
+//   //  await NOGIT.commit('second commit');
+//     //await NOGIT.commit('second commit');
+
+//     NOGIT.showCommitDiff('0ff449ef102bf2d0a6e17cb1dc6d07b158e840cf');
+//     await NOGIT.log();
+
+// })();
 
 
-    await NOGIT.log();
-
-})();
+program.command('init').action(async () => 
+    {
+        const repo = new nogit();
+    });
+    
+    program.command('add <file>').action(async (file) => 
+    {
+        const repo = new nogit();
+        await repo.add(file);
+    });
+    
+    program.command('commit <message>').action(async (message) => 
+    {
+        const repo = new nogit();
+        await repo.commit(message);
+    });
+    
+    program.command('show <commitHash>').action(async (commitHash) => 
+    {
+        const repo = new nogit();
+        await repo.showCommitDiff(commitHash);
+    });
+    
+    program.command('log').action(async () => 
+    {
+        const repo = new nogit();
+        await repo.log();
+    });
+    
+    program.parse(process.argv);
+    
